@@ -1,113 +1,229 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
+    <meta charset="UTF-8">
     <title>3D Cube Game</title>
     <style>
-        body { margin: 0; }
-        canvas { display: block; }
-    </style>
-</head>
-<body>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script>
-    // Basic setup
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
-
-    // Skybox
-    const loader = new THREE.CubeTextureLoader();
-    const texture = loader.load([
-        'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/px.png', // px
-        'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/nx.png', // nx
-        'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/py.png', // py
-        'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/ny.png', // ny
-        'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/pz.png', // pz
-        'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/nz.png'  // nz
-    ]);
-    scene.background = texture;
-
-    // Player cube
-    const playerGeometry = new THREE.BoxGeometry(0.4, 0.4, 0.4);
-    const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-    const playerCube = new THREE.Mesh(playerGeometry, playerMaterial);
-    scene.add(playerCube);
-
-    // Platform
-    const platformGeometry = new THREE.BoxGeometry(10, 1, 0.2);
-    const platformMaterial = new THREE.MeshBasicMaterial({ color: 0x8c8c8c });
-    const platform = new THREE.Mesh(platformGeometry, platformMaterial);
-    platform.position.y = -0.6;
-    scene.add(platform);
-
-    // Set player cube on the platform
-    const playerCubeHeight = 0.4;
-    playerCube.position.y = platform.position.y + playerCubeHeight / 2;
-
-    // Camera position for top-side view
-    camera.position.set(0, 10, 0);
-    camera.lookAt(platform.position);
-
-    // Obstacle cubes
-    const obstacles = [];
-    const obstacleMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-
-    function addObstacle() {
-        const obstacleGeometry = new THREE.BoxGeometry(0.4, 0.4, 0.4);
-        const obstacle = new THREE.Mesh(obstacleGeometry, obstacleMaterial);
-        obstacle.position.x = (Math.random() - 0.5) * 8;
-        obstacle.position.y = platform.position.y + playerCubeHeight / 2;
-        scene.add(obstacle);
-        obstacles.push(obstacle);
-    }
-
-    // Controls
-    const velocity = { x: 0, y: 0 };
-    const onKeyPress = function(event) {
-        if (event.code === 'ArrowLeft') velocity.x = -0.1;
-        if (event.code === 'ArrowRight') velocity.x = 0.1;
-        if (event.code === 'Space') velocity.y = 0.2;
-    };
-    const onKeyRelease = function(event) {
-        if (event.code === 'ArrowLeft' || event.code === 'ArrowRight') velocity.x = 0;
-        if (event.code === 'Space') velocity.y = 0;
-    };
-    document.addEventListener('keydown', onKeyPress);
-    document.addEventListener('keyup', onKeyRelease);
-
-    // Animation loop
-    function animate() {
-        requestAnimationFrame(animate);
-
-        // Player movement
-        playerCube.position.x += velocity.x;
-        playerCube.position.y += velocity.y;
-
-        // Simple gravity
-        if (playerCube.position.y > platform.position.y + (playerCubeHeight / 2)) {
-            velocity.y -= 0.01;
-        } else {
-            playerCube.position.y = platform.position.y + (playerCubeHeight / 2);
-            velocity.y = 0;
+        body {
+            margin: 0;
+            background: linear-gradient(to bottom, #1e3c72, #2a5298);
+            /* Example gradient */
         }
 
-        // Spawn obstacles
-        if (Math.random() < 0.01) addObstacle();
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
 
-        // Obstacles movement
-        obstacles.forEach(obstacle => {
-            obstacle.position.z += 0.1;
-            if (obstacle.position.z > 5) {
-                obstacle.position.z = -5;
+<body>
+    <div id="lives" style="position: absolute; top: 10px; left: 10px; color: red; font-size: 24px;">❤️❤️❤️</div>
+    <div id="score" style="position: absolute; top: 50px; left: 10px; color: white; font-size: 24px;">Score: 0</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three/examples/js/loaders/GLTFLoader.js"></script>
+    <script>
+        let scene, camera, renderer, player, platform, clock, obstacles = [];
+        let lives = 3;
+        let score = 0;
+        const playerSpeed = 5, jumpHeight = 7;
+        let jumping = false, playerVelocityY = 0, lastTime = 0;
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            // Lighting to give depth to objects
+            const ambientLight = new THREE.AmbientLight(0xaaaaaa);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(0, 20, 10);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+
+            // Skybox
+            const loader = new THREE.CubeTextureLoader();
+            const texture = loader.load([
+                'https://i.ibb.co/ZG8gGjc/posx.jpg', //  px
+                'https://i.ibb.co/RSDJmr5/negx.jpg', //  nx
+                'https://i.ibb.co/cvVWQPf/posy.jpg', //  py
+                'https://i.ibb.co/JsVb51L/negy.jpg', //  ny
+                'https://i.ibb.co/fvb0sV4/posz.jpg', //  pz
+                'https://i.ibb.co/jT0nFym/negz.jpg', //  nz
+            ]);
+            scene.background = texture;
+
+            // Extended platform
+            const geometry = new THREE.BoxGeometry(40, 1, 5);
+            const material = new THREE.MeshLambertMaterial({ color: 0xaaaaaa });
+            platform = new THREE.Mesh(geometry, material);
+            platform.receiveShadow = true;
+            scene.add(platform);
+
+
+            // Player cube
+            const gltfLoader = new THREE.GLTFLoader();
+            gltfLoader.load('https://devday2.s3.ap-south-1.amazonaws.com/tarisland_-_dragon_high_poly.glb', function (gltf) {
+                player = gltf.scene;
+                player.scale.set(0.2, 0.2, 0.2);
+                player.position.set(0, 0.5, 0); // Set the initial position of the green cube
+                player.rotation.y = Math.PI / 2; // Rotate the player by 90 degrees
+                scene.add(player);
+            });
+
+            camera.position.set(0, 5, 15);
+            camera.lookAt(platform.position);
+
+            clock = new THREE.Clock();
+
+            document.addEventListener('keydown', onDocumentKeyDown, false);
+            document.addEventListener('keyup', onDocumentKeyUp, false);
+            document.addEventListener('mousemove', onDocumentMouseMove, false);
+
+            setTimeout(() => {
+                spawnObstacle();
+            }, 5000);
+        }
+
+        let keysPressed = {};
+
+        function onDocumentKeyDown(event) {
+            keysPressed[event.key] = true;
+        }
+
+        function onDocumentKeyUp(event) {
+            keysPressed[event.key] = false;
+        }
+
+        function onDocumentMouseMove(event) {
+            const mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+            const mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            camera.position.x = mouseX * 10;
+            camera.position.y = mouseY * 10;
+
+            camera.lookAt(platform.position);
+        }
+
+        function spawnObstacle() {
+            const gltfLoader = new THREE.GLTFLoader();
+            let obstacle;
+            gltfLoader.load('https://devday2.s3.ap-south-1.amazonaws.com/soccer_ball_high.glb', function (gltf) {
+                obstacle = gltf.scene;
+                obstacle.scale.set(0.35, 0.35, 0.35); // Reduce the size of the obstacle
+                obstacle.position.set(0, 0, 0); // Set the initial position of the green cube
+                obstacle.castShadow = true;
+                obstacle.position.x = 20;
+                obstacle.position.y = 0.5;
+                obstacle.velocity = -0.1 - Math.random() * 0.2;
+
+                // Update ball rotation to match platform's rotation
+                obstacle.rotation.y = platform.rotation.y;
+
+                obstacles.push(obstacle);
+                scene.add(obstacle);
+            });            
+            setTimeout(spawnObstacle, 2000);
+        }
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+
+            let delta = (time - lastTime) / 1000;
+
+            if (keysPressed['ArrowLeft']) {
+                player.position.x -= playerSpeed * delta;
             }
-        });
+            if (keysPressed['ArrowRight']) {
+                player.position.x += playerSpeed * delta;
+            }
+            if (keysPressed[' '] && !jumping) {
+                jumping = true;
+                playerVelocityY = jumpHeight;
+            }
 
-        renderer.render(scene, camera);
-    }
+            if (jumping) {
+                player.position.y += playerVelocityY * delta;
+                playerVelocityY -= 9.8 * delta; // gravity
+                if (player.position.y <= 0.5) {
+                    jumping = false;
+                    player.position.y = 0.5;
+                }
+            }
 
-    animate();
-</script>
+            obstacles.forEach(obstacle => {
+                obstacle.position.x += obstacle.velocity;
+                if (obstacle.position.x < -20) {
+                    scene.remove(obstacle);
+                    obstacles.splice(obstacles.indexOf(obstacle), 1);
+                    score += 1; // Increment score
+                    document.getElementById('score').innerText = `Score: ${score}`; // Update score display
+                }
+            });
+
+            if(obstacles.length>0 && player) {
+                obstacles.forEach(obstacle => {
+                    if (obstacle.position.distanceTo(player.position) < 1) {
+                        console.log('Collision Detected');
+                        lives -= 1;
+                        player.traverse((child) => {
+                            if (child.isMesh) {
+                                child.material.transparent = true;
+                                child.material.opacity = 0.5;
+                                setTimeout(() => {
+                                    child.material.opacity = 0;
+                                    setTimeout(() => {
+                                        child.material.opacity = 1;
+                                        child.material.transparent = false;
+                                    }, 500);
+                                }, 500);
+                            }
+                        });
+                        document.getElementById('lives').innerText = '❤️'.repeat(lives);
+                        scene.remove(obstacle);
+                        obstacles.splice(obstacles.indexOf(obstacle), 1);
+                        if (lives <= 0) {
+                            console.log('Game Over');
+                            const fullScreenDiv = document.createElement('div');
+                            fullScreenDiv.style.position = 'fixed';
+                            fullScreenDiv.style.top = '0';
+                            fullScreenDiv.style.left = '0';
+                            fullScreenDiv.style.width = '100vw';
+                            fullScreenDiv.style.height = '100vh';
+                            fullScreenDiv.style.backgroundColor = 'black';
+                            document.body.appendChild(fullScreenDiv);
+
+                            const gameOverScreen = document.createElement('div');
+                            gameOverScreen.style.position = 'absolute';
+                            gameOverScreen.style.top = '50vh';
+                            gameOverScreen.style.left = '50vw';
+                            gameOverScreen.style.transform = 'translate(-50%, -50%)';
+                            gameOverScreen.style.color = 'red';
+                            gameOverScreen.style.fontSize = '48px';
+                            gameOverScreen.innerText = 'Game Over';
+                            fullScreenDiv.appendChild(gameOverScreen);
+                            // Reset game or stop animation
+                            // For example, to stop the animation you could return;
+                            return;
+                        }
+                    }
+                });
+            }
+            
+
+            renderer.render(scene, camera);
+            lastTime = time;
+        }
+
+        init();
+        animate(0);
+    </script>
 </body>
+
 </html>
