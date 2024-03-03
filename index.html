@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3D Cube Game</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+    // Basic setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Skybox
+    const loader = new THREE.CubeTextureLoader();
+    const texture = loader.load([
+        'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/px.png', // px
+        'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/nx.png', // nx
+        'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/py.png', // py
+        'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/ny.png', // ny
+        'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/pz.png', // pz
+        'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/nz.png'  // nz
+    ]);
+    scene.background = texture;
+
+    // Player cube
+    const playerGeometry = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+    const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+    const playerCube = new THREE.Mesh(playerGeometry, playerMaterial);
+    scene.add(playerCube);
+
+    // Platform
+    const platformGeometry = new THREE.BoxGeometry(10, 1, 0.2);
+    const platformMaterial = new THREE.MeshBasicMaterial({ color: 0x8c8c8c });
+    const platform = new THREE.Mesh(platformGeometry, platformMaterial);
+    platform.position.y = -0.6;
+    scene.add(platform);
+
+    // Set player cube on the platform
+    const playerCubeHeight = 0.4;
+    playerCube.position.y = platform.position.y + playerCubeHeight / 2;
+
+    // Camera position for top-side view
+    camera.position.set(0, 10, 0);
+    camera.lookAt(platform.position);
+
+    // Obstacle cubes
+    const obstacles = [];
+    const obstacleMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+
+    function addObstacle() {
+        const obstacleGeometry = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+        const obstacle = new THREE.Mesh(obstacleGeometry, obstacleMaterial);
+        obstacle.position.x = (Math.random() - 0.5) * 8;
+        obstacle.position.y = platform.position.y + playerCubeHeight / 2;
+        scene.add(obstacle);
+        obstacles.push(obstacle);
+    }
+
+    // Controls
+    const velocity = { x: 0, y: 0 };
+    const onKeyPress = function(event) {
+        if (event.code === 'ArrowLeft') velocity.x = -0.1;
+        if (event.code === 'ArrowRight') velocity.x = 0.1;
+        if (event.code === 'Space') velocity.y = 0.2;
+    };
+    const onKeyRelease = function(event) {
+        if (event.code === 'ArrowLeft' || event.code === 'ArrowRight') velocity.x = 0;
+        if (event.code === 'Space') velocity.y = 0;
+    };
+    document.addEventListener('keydown', onKeyPress);
+    document.addEventListener('keyup', onKeyRelease);
+
+    // Animation loop
+    function animate() {
+        requestAnimationFrame(animate);
+
+        // Player movement
+        playerCube.position.x += velocity.x;
+        playerCube.position.y += velocity.y;
+
+        // Simple gravity
+        if (playerCube.position.y > platform.position.y + (playerCubeHeight / 2)) {
+            velocity.y -= 0.01;
+        } else {
+            playerCube.position.y = platform.position.y + (playerCubeHeight / 2);
+            velocity.y = 0;
+        }
+
+        // Spawn obstacles
+        if (Math.random() < 0.01) addObstacle();
+
+        // Obstacles movement
+        obstacles.forEach(obstacle => {
+            obstacle.position.z += 0.1;
+            if (obstacle.position.z > 5) {
+                obstacle.position.z = -5;
+            }
+        });
+
+        renderer.render(scene, camera);
+    }
+
+    animate();
+</script>
+</body>
+</html>
